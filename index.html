@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Ma voiture">
+<meta name="theme-color" content="#1D3B4A">
+<title>Ma voiture</title>
+<style>
+:root{
+  --ink:#16252E; --ink2:#55656E; --line:#D9DEE0; --paper:#F4F6F5; --card:#FFFFFF;
+  --petrol:#1D3B4A; --amber:#D99A00; --amberBg:#FFF4D6; --red:#B83227; --redBg:#FBE6E3;
+  --green:#2E7D5B; --greenBg:#E2F2EA;
+  color-scheme: light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --ink:#E8EDEF; --ink2:#9AA9B0; --line:#2D3A41; --paper:#0F171C; --card:#18232A;
+    --petrol:#9CC3D6; --amber:#F2B731; --amberBg:#3A2E10; --red:#F08273; --redBg:#3D1C18;
+    --green:#6FCB9F; --greenBg:#15301F;
+    color-scheme: dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%}
+.num{font-variant-numeric:tabular-nums}
+main{max-width:640px;margin:0 auto;padding:16px 16px 96px}
+h1{font-size:15px;font-weight:600;color:var(--ink2);margin:4px 0 6px}
+h2{font-size:18px;margin:24px 0 10px}
+.odo{display:flex;gap:3px;margin:4px 0 2px}
+.odo span{background:var(--petrol);color:var(--paper);font-size:30px;font-weight:600;width:30px;text-align:center;border-radius:4px;padding:2px 0}
+.odo em{font-style:normal;align-self:flex-end;margin-left:6px;color:var(--ink2);font-size:15px}
+.muted{color:var(--ink2);font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.stat b{display:block;font-size:21px;font-weight:600}
+.stat small{color:var(--ink2);font-size:13px}
+.alert{border-radius:8px;padding:9px 12px;margin-bottom:6px;font-size:15px}
+.alert.late{background:var(--redBg);color:var(--red)}
+.alert.soon{background:var(--amberBg);color:var(--amber)}
+.alert.ok{background:var(--greenBg);color:var(--green)}
+.list{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.row{display:flex;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.row:last-child{border-bottom:0}
+.row .r{text-align:right;white-space:nowrap}
+.empty{padding:16px;color:var(--ink2);font-size:15px}
+button{font:inherit;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:10px 14px;cursor:pointer}
+button.primary{background:var(--petrol);color:var(--paper);border-color:var(--petrol);font-weight:600}
+button.danger{color:var(--red)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.actions button{flex:1}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;border:0;border-radius:0;background:none;padding:10px 2px;font-size:12px;color:var(--ink2)}
+nav button.on{color:var(--petrol);font-weight:600}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:10}
+.sheet.open{display:flex}
+.sheet form{background:var(--card);width:100%;max-width:640px;max-height:92%;overflow-y:auto;border-radius:14px 14px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px))}
+label{display:block;font-size:14px;color:var(--ink2);margin:10px 0 4px}
+input,select,textarea{font:inherit;font-size:16px;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
+.check{display:flex;align-items:center;gap:8px;margin-top:12px;color:var(--ink)}
+.check input{width:22px;height:22px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.err{color:var(--red);font-size:14px;min-height:1em;margin-top:8px}
+svg text{fill:var(--ink2);font-size:11px}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<nav id="nav"></nav>
+<div class="sheet" id="sheet"><form id="form" novalidate></form></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script>
+const KEY='suiviVehicule.v1';
+const CATS=['Révision','Entretien','Réparation','Pneus','Contrôle technique','Assurance','Péage','Parking','Lavage','Équipement','Amende','Autre'];
+const DEFAULT_SCHED=[
+ {name:'Révision',kmInt:'',monthInt:''},{name:'Vidange',kmInt:'',monthInt:''},
+ {name:'Courroie de distribution',kmInt:'',monthInt:''},{name:'Contrôle technique',kmInt:'',monthInt:24},
+ {name:'Liquide de frein',kmInt:'',monthInt:''},{name:'Pneus',kmInt:'',monthInt:''},
+ {name:'Freins',kmInt:'',monthInt:''},{name:'Batterie',kmInt:'',monthInt:''}
+];
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function load(){
+  try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.fuels)return d}catch(e){}
+  return {vehicle:{name:'Peugeot 2008',kmAchat:'',dateAchat:''},fuels:[],expenses:[],
+    schedules:DEFAULT_SCHED.map(s=>({id:uid(),...s,lastDate:'',lastKm:''})),lastExport:''};
+}
+let D=load();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){alert("Enregistrement impossible sur cet appareil. Exporte tes données.")}}
+
+const eur=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n||0);
+const nf=(n,d=0)=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n||0);
+const fdate=s=>s?new Date(s+'T12:00').toLocaleDateString('fr-FR'):'';
+const today=()=>new Date().toISOString().slice(0,10);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num=v=>v===''||v==null?NaN:parseFloat(String(v).replace(',','.'));
+
+function currentKm(){
+  const k=[num(D.vehicle.kmAchat),...D.fuels.map(f=>num(f.km)),...D.expenses.map(e=>num(e.km))].filter(x=>!isNaN(x));
+  return k.length?Math.max(...k):0;
+}
+function consos(){
+  const f=[...D.fuels].sort((a,b)=>num(a.km)-num(b.km));
+  const out={};let lastFull=null,acc=0;
+  for(const x of f){
+    acc+=num(x.litres)||0;
+    if(x.full){
+      if(lastFull){const dist=num(x.km)-num(lastFull.km);if(dist>0)out[x.id]=acc/dist*100}
+      lastFull=x;acc=0;
+    }
+  }
+  return out;
+}
+function schedStatus(s){
+  const linked=D.expenses.filter(e=>e.schedId===s.id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  let lastDate=s.lastDate,lastKm=num(s.lastKm);
+  if(linked[0]&&(!lastDate||linked[0].date>=lastDate)){lastDate=linked[0].date;lastKm=num(linked[0].km)}
+  const kmI=num(s.kmInt),moI=num(s.monthInt);
+  let nextKm=NaN,nextDate='';
+  if(!isNaN(kmI)&&!isNaN(lastKm))nextKm=lastKm+kmI;
+  if(!isNaN(moI)&&lastDate){const d=new Date(lastDate+'T12:00');d.setMonth(d.getMonth()+moI);nextDate=d.toISOString().slice(0,10)}
+  const cur=currentKm();let st='none';
+  if(!isNaN(nextKm)||nextDate){
+    st='ok';
+    const daysLeft=nextDate?(new Date(nextDate)-new Date())/864e5:Infinity;
+    const kmLeft=!isNaN(nextKm)?nextKm-cur:Infinity;
+    if(daysLeft<=0||kmLeft<=0)st='late';else if(daysLeft<=45||kmLeft<=1500)st='soon';
+  }
+  return {lastDate,lastKm,nextKm,nextDate,st,configured:!isNaN(kmI)||!isNaN(moI)};
+}
+function schedText(s,r){
+  const p=[];
+  if(!isNaN(r.nextKm))p.push(nf(r.nextKm)+' km');
+  if(r.nextDate)p.push(fdate(r.nextDate));
+  return p.join(' ou ');
+}
+
+let tab='home';
+const TABS=[['home','Accueil'],['fuel','Pleins'],['exp','Dépenses'],['sched','Échéances'],['set','Réglages']];
+function renderNav(){document.getElementById('nav').innerHTML=TABS.map(([k,l])=>`<button class="${tab===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('')}
+function go(k){tab=k;render();window.scrollTo(0,0)}
+
+function render(){
+  renderNav();
+  const a=document.getElementById('app');
+  a.innerHTML=({home:vHome,fuel:vFuel,exp:vExp,sched:vSched,set:vSet})[tab]();
+}
+
+function vHome(){
+  const cur=currentKm(),c=consos(),vals=Object.values(c);
+  const avg=vals.length?vals.reduce((s,x)=>s+x,0)/vals.length:0;
+  const y=String(new Date().getFullYear());
+  const fuelY=D.fuels.filter(f=>(f.date||'').startsWith(y)).reduce((s,f)=>s+(num(f.total)||0),0);
+  const expY=D.expenses.filter(e=>(e.date||'').startsWith(y)).reduce((s,e)=>s+(num(e.amount)||0),0);
+  const totAll=D.fuels.reduce((s,f)=>s+(num(f.total)||0),0)+D.expenses.reduce((s,e)=>s+(num(e.amount)||0),0);
+  const dist=cur-(num(D.vehicle.kmAchat)||0);
+  const perKm=dist>0&&!isNaN(num(D.vehicle.kmAchat))?totAll/dist:NaN;
+  const digits=String(Math.round(cur)).padStart(6,'0').split('').map(d=>`<span class="num">${d}</span>`).join('');
+  const alerts=D.schedules.map(s=>({s,r:schedStatus(s)})).filter(x=>x.r.st==='late'||x.r.st==='soon')
+    .map(({s,r})=>`<div class="alert ${r.st}">${esc(s.name)} : ${r.st==='late'?'dépassé':'bientôt'} (${schedText(s,r)})</div>`).join('');
+  const recent=[...D.fuels.map(f=>({t:'f',d:f.date,o:f})),...D.expenses.map(e=>({t:'e',d:e.date,o:e}))]
+    .sort((a,b)=>(b.d||'').localeCompare(a.d||'')).slice(0,5);
+  const backupWarn=(D.fuels.length+D.expenses.length)>0&&(!D.lastExport||(new Date()-new Date(D.lastExport))/864e5>30)
+    ?`<div class="alert soon">Dernière sauvegarde : ${D.lastExport?fdate(D.lastExport.slice(0,10)):'jamais'}. <a href="#" onclick="exportData();return false" style="color:inherit">Exporter</a></div>`:'';
+  return `<h1>${esc(D.vehicle.name)}</h1>
+  <div class="odo">${digits}<em>km</em></div>
+  ${backupWarn}
+  <div class="actions"><button class="primary" onclick="openFuel()">Ajouter un plein</button><button onclick="openExp()">Ajouter une dépense</button></div>
+  <div class="grid">
+    <div class="stat"><small>Conso moyenne</small><b class="num">${vals.length?nf(avg,1)+' L/100':'–'}</b></div>
+    <div class="stat"><small>Coût total au km</small><b class="num">${isNaN(perKm)?'–':nf(perKm,2)+' €'}</b></div>
+    <div class="stat"><small>Carburant ${y}</small><b class="num">${eur(fuelY)}</b></div>
+    <div class="stat"><small>Autres dépenses ${y}</small><b class="num">${eur(expY)}</b></div>
+  </div>
+  ${alerts?`<h2>À prévoir</h2>${alerts}`:''}
+  <h2>Derniers mouvements</h2>
+  <div class="list">${recent.length?recent.map(x=>x.t==='f'?rowFuel(x.o,c):rowExp(x.o)).join(''):'<div class="empty">Ajoute ton premier plein ou une facture.</div>'}</div>
+  ${isNaN(num(D.vehicle.kmAchat))?'<p class="muted">Renseigne le kilométrage à l\'achat dans Réglages pour calculer le coût au km.</p>':''}`;
+}
+function rowFuel(f,c){
+  const v=c[f.id];
+  return `<div class="row" onclick="openFuel('${f.id}')"><div>Plein ${f.full?'':'partiel'}<div class="muted">${fdate(f.date)} · ${nf(num(f.km))} km</div></div>
+  <div class="r num">${eur(num(f.total))}<div class="muted">${nf(num(f.litres),2)} L${v?' · '+nf(v,1)+' L/100':''}</div></div></div>`;
+}
+function rowExp(e){
+  return `<div class="row" onclick="openExp('${e.id}')"><div>${esc(e.label||e.cat)}<div class="muted">${fdate(e.date)}${e.km?' · '+nf(num(e.km))+' km':''} · ${esc(e.cat)}</div></div>
+  <div class="r num">${eur(num(e.amount))}</div></div>`;
+}
+
+function vFuel(){
+  const c=consos();
+  const f=[...D.fuels].sort((a,b)=>num(b.km)-num(a.km));
+  const pts=[...D.fuels].sort((a,b)=>num(a.km)-num(b.km)).filter(x=>c[x.id]).map(x=>({d:x.date,v:c[x.id]}));
+  const lit=D.fuels.reduce((s,x)=>s+(num(x.litres)||0),0),tot=D.fuels.reduce((s,x)=>s+(num(x.total)||0),0);
+  return `<div class="actions"><button class="primary" onclick="openFuel()">Ajouter un plein</button></div>
+  <div class="grid"><div class="stat"><small>Prix moyen du litre</small><b class="num">${lit?nf(tot/lit,3)+' €':'–'}</b></div>
+  <div class="stat"><small>Total carburant</small><b class="num">${eur(tot)}</b></div></div>
+  <h2>Consommation</h2>${chart(pts)}
+  <p class="muted">Calculée entre deux pleins complets. Un plein partiel est ajouté au plein complet suivant.</p>
+  <h2>Historique</h2><div class="list">${f.length?f.map(x=>rowFuel(x,c)).join(''):'<div class="empty">Aucun plein pour l\'instant.</div>'}</div>`;
+}
+function chart(pts){
+  if(pts.length<2)return '<div class="chart"><div class="empty">Il faut au moins trois pleins complets pour afficher la courbe.</div></div>';
+  const W=340,H=160,p=28,vs=pts.map(x=>x.v),mn=Math.floor(Math.min(...vs)-.5),mx=Math.ceil(Math.max(...vs)+.5);
+  const X=i=>p+i*(W-p-8)/(pts.length-1),Y=v=>H-20-(v-mn)/(mx-mn)*(H-34);
+  const path=pts.map((x,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(x.v).toFixed(1)).join(' ');
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Évolution de la consommation">
+  <line x1="${p}" x2="${W-8}" y1="${Y(mn)}" y2="${Y(mn)}" stroke="var(--line)"/><line x1="${p}" x2="${W-8}" y1="${Y(mx)}" y2="${Y(mx)}" stroke="var(--line)"/>
+  <text x="2" y="${Y(mx)+4}">${mx}</text><text x="2" y="${Y(mn)+4}">${mn}</text>
+  <path d="${path}" fill="none" stroke="var(--amber)" stroke-width="2.5" stroke-linejoin="round"/>
+  ${pts.map((x,i)=>`<circle cx="${X(i)}" cy="${Y(x.v)}" r="3" fill="var(--petrol)"/>`).join('')}
+  <text x="${p}" y="${H-4}">${fdate(pts[0].d)}</text><text x="${W-8}" y="${H-4}" text-anchor="end">${fdate(pts[pts.length-1].d)}</text>
+  </svg></div>`;
+}
+
+let expFilter='';
+function vExp(){
+  const list=[...D.expenses].filter(e=>!expFilter||e.cat===expFilter).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const byCat={};D.expenses.forEach(e=>byCat[e.cat]=(byCat[e.cat]||0)+(num(e.amount)||0));
+  return `<div class="actions"><button class="primary" onclick="openExp()">Ajouter une dépense</button></div>
+  <label for="flt">Filtrer</label><select id="flt" onchange="expFilter=this.value;render()"><option value="">Toutes les catégories</option>${CATS.map(c=>`<option ${c===expFilter?'selected':''}>${c}</option>`).join('')}</select>
+  <h2>Par catégorie</h2><div class="list">${Object.keys(byCat).length?Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="row" style="cursor:default"><div>${esc(k)}</div><div class="r num">${eur(v)}</div></div>`).join(''):'<div class="empty">Aucune dépense saisie.</div>'}</div>
+  <h2>Historique</h2><div class="list">${list.length?list.map(rowExp).join(''):'<div class="empty">Rien dans cette catégorie.</div>'}</div>`;
+}
+
+function vSched(){
+  return `<p class="muted">Règle les intervalles d'après ton carnet d'entretien. Une dépense rattachée à une échéance met à jour la date du dernier passage.</p>
+  <div class="actions"><button onclick="openSched()">Ajouter une échéance</button></div>
+  <div class="list">${D.schedules.map(s=>{const r=schedStatus(s);
+    const tag=r.st==='late'?'<span style="color:var(--red)">Dépassé</span>':r.st==='soon'?'<span style="color:var(--amber)">Bientôt</span>':r.st==='ok'?'<span style="color:var(--green)">OK</span>':'';
+    const det=!r.configured?'Intervalle à régler':(!r.lastDate&&isNaN(r.lastKm))?'Dernier passage à renseigner':'Prochaine : '+schedText(s,r);
+    return `<div class="row" onclick="openSched('${s.id}')"><div>${esc(s.name)}<div class="muted">${det}</div></div><div class="r">${tag}</div></div>`}).join('')}</div>`;
+}
+
+function vSet(){
+  const v=D.vehicle;
+  return `<h2>Véhicule</h2>
+  <label for="vn">Nom</label><input id="vn" value="${esc(v.name)}">
+  <div class="two"><div><label for="vk">Km à l'achat</label><input id="vk" inputmode="numeric" value="${esc(v.kmAchat)}"></div>
+  <div><label for="vd">Date d'achat</label><input id="vd" type="date" value="${esc(v.dateAchat)}"></div></div>
+  <div class="actions"><button class="primary" onclick="saveVehicle()">Enregistrer</button></div>
+  <h2>Sauvegarde</h2>
+  <p class="muted">Les données restent sur ce téléphone. Exporte régulièrement le fichier et range-le dans Fichiers ou iCloud.</p>
+  <div class="actions"><button onclick="exportData()">Exporter (JSON)</button><button onclick="document.getElementById('importFile').click()">Importer</button></div>
+  <div class="actions"><button onclick="exportCSV()">Exporter en CSV</button></div>
+  <p class="muted">${D.fuels.length} pleins · ${D.expenses.length} dépenses${D.lastExport?' · dernier export le '+fdate(D.lastExport.slice(0,10)):''}</p>`;
+}
+function saveVehicle(){
+  D.vehicle={name:document.getElementById('vn').value.trim()||'Ma voiture',kmAchat:document.getElementById('vk').value.trim(),dateAchat:document.getElementById('vd').value};
+  save();render();
+}
+
+const sheet=document.getElementById('sheet'),form=document.getElementById('form');
+function closeSheet(){sheet.classList.remove('open')}
+sheet.addEventListener('click',e=>{if(e.target===sheet)closeSheet()});
+
+function openFuel(id){
+  const f=D.fuels.find(x=>x.id===id)||{date:today(),km:'',litres:'',total:'',full:true,station:''};
+  form.innerHTML=`<h2 style="margin-top:0">${id?'Modifier le plein':'Nouveau plein'}</h2>
+  <div class="two"><div><label for="fd">Date</label><input id="fd" type="date" value="${f.date}"></div>
+  <div><label for="fk">Compteur (km)</label><input id="fk" inputmode="numeric" value="${esc(f.km)}" placeholder="${currentKm()||''}"></div></div>
+  <div class="two"><div><label for="fl">Litres</label><input id="fl" inputmode="decimal" value="${esc(f.litres)}"></div>
+  <div><label for="ft">Montant (€)</label><input id="ft" inputmode="decimal" value="${esc(f.total)}"></div></div>
+  <label for="fs">Station</label><input id="fs" value="${esc(f.station)}">
+  <label class="check"><input id="ff" type="checkbox" ${f.full?'checked':''}> Plein complet</label>
+  <div class="err" id="ferr"></div>
+  <div class="actions"><button type="button" onclick="closeSheet()">Annuler</button><button class="primary" type="submit">Enregistrer</button></div>
+  ${id?`<div class="actions"><button type="button" class="danger" onclick="delItem('fuels','${id}')">Supprimer</button></div>`:''}`;
+  form.onsubmit=e=>{e.preventDefault();
+    const o={id:id||uid(),date:fd.value,km:fk.value.trim(),litres:fl.value.trim().replace(',','.'),total:ft.value.trim().replace(',','.'),station:fs.value.trim(),full:ff.checked};
+    if(!o.date||isNaN(num(o.km))||isNaN(num(o.litres))||isNaN(num(o.total))){ferr.textContent='Renseigne la date, le compteur, les litres et le montant.';return}
+    upsert('fuels',o)};
+  sheet.classList.add('open');
+}
+function openExp(id){
+  const e=D.expenses.find(x=>x.id===id)||{date:today(),km:'',cat:'Entretien',label:'',amount:'',garage:'',ref:'',note:'',schedId:''};
+  form.innerHTML=`<h2 style="margin-top:0">${id?'Modifier la dépense':'Nouvelle dépense'}</h2>
+  <div class="two"><div><label for="ed">Date</label><input id="ed" type="date" value="${e.date}"></div>
+  <div><label for="ek">Compteur (km)</label><input id="ek" inputmode="numeric" value="${esc(e.km)}"></div></div>
+  <label for="ec">Catégorie</label><select id="ec">${CATS.map(c=>`<option ${c===e.cat?'selected':''}>${c}</option>`).join('')}</select>
+  <label for="el">Intitulé</label><input id="el" value="${esc(e.label)}" placeholder="Révision 60 000 km">
+  <div class="two"><div><label for="ea">Montant (€)</label><input id="ea" inputmode="decimal" value="${esc(e.amount)}"></div>
+  <div><label for="eg">Garage / lieu</label><input id="eg" value="${esc(e.garage)}"></div></div>
+  <label for="er">Référence facture</label><input id="er" value="${esc(e.ref)}" placeholder="N° de facture">
+  <label for="es">Correspond à l'échéance</label><select id="es"><option value="">Aucune</option>${D.schedules.map(s=>`<option value="${s.id}" ${s.id===e.schedId?'selected':''}>${esc(s.name)}</option>`).join('')}</select>
+  <label for="en">Détail des travaux</label><textarea id="en" rows="3">${esc(e.note)}</textarea>
+  <div class="err" id="eerr"></div>
+  <div class="actions"><button type="button" onclick="closeSheet()">Annuler</button><button class="primary" type="submit">Enregistrer</button></div>
+  ${id?`<div class="actions"><button type="button" class="danger" onclick="delItem('expenses','${id}')">Supprimer</button></div>`:''}`;
+  form.onsubmit=ev=>{ev.preventDefault();
+    const o={id:id||uid(),date:ed.value,km:ek.value.trim(),cat:ec.value,label:el.value.trim(),amount:ea.value.trim().replace(',','.'),garage:eg.value.trim(),ref:er.value.trim(),note:en.value.trim(),schedId:es.value};
+    if(!o.date||isNaN(num(o.amount))){eerr.textContent='Renseigne au moins la date et le montant.';return}
+    if(o.schedId&&isNaN(num(o.km))){eerr.textContent='Pour une échéance, indique aussi le kilométrage.';return}
+    upsert('expenses',o)};
+  sheet.classList.add('open');
+}
+function openSched(id){
+  const s=D.schedules.find(x=>x.id===id)||{name:'',kmInt:'',monthInt:'',lastDate:'',lastKm:''};
+  form.innerHTML=`<h2 style="margin-top:0">${id?'Modifier l\'échéance':'Nouvelle échéance'}</h2>
+  <label for="sn">Nom</label><input id="sn" value="${esc(s.name)}">
+  <div class="two"><div><label for="sk">Tous les (km)</label><input id="sk" inputmode="numeric" value="${esc(s.kmInt)}"></div>
+  <div><label for="sm">Tous les (mois)</label><input id="sm" inputmode="numeric" value="${esc(s.monthInt)}"></div></div>
+  <p class="muted">Dernier passage, si tu n'as pas de facture rattachée :</p>
+  <div class="two"><div><label for="sld">Date</label><input id="sld" type="date" value="${esc(s.lastDate)}"></div>
+  <div><label for="slk">Km</label><input id="slk" inputmode="numeric" value="${esc(s.lastKm)}"></div></div>
+  <div class="err" id="serr"></div>
+  <div class="actions"><button type="button" onclick="closeSheet()">Annuler</button><button class="primary" type="submit">Enregistrer</button></div>
+  ${id?`<div class="actions"><button type="button" class="danger" onclick="delItem('schedules','${id}')">Supprimer</button></div>`:''}`;
+  form.onsubmit=e=>{e.preventDefault();
+    const o={id:id||uid(),name:sn.value.trim(),kmInt:sk.value.trim(),monthInt:sm.value.trim(),lastDate:sld.value,lastKm:slk.value.trim()};
+    if(!o.name){serr.textContent='Donne un nom à l\'échéance.';return}
+    upsert('schedules',o)};
+  sheet.classList.add('open');
+}
+function upsert(k,o){const i=D[k].findIndex(x=>x.id===o.id);if(i>=0)D[k][i]=o;else D[k].push(o);save();closeSheet();render()}
+function delItem(k,id){if(!confirm('Supprimer définitivement ?'))return;D[k]=D[k].filter(x=>x.id!==id);if(k==='schedules')D.expenses.forEach(e=>{if(e.schedId===id)e.schedId=''});save();closeSheet();render()}
+
+function download(name,content,type){
+  const b=new Blob([content],{type}),u=URL.createObjectURL(b),a=document.createElement('a');
+  a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);
+}
+function exportData(){
+  D.lastExport=new Date().toISOString();save();
+  download('voiture-'+today()+'.json',JSON.stringify(D,null,1),'application/json');render();
+}
+function exportCSV(){
+  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const lines=[['type','date','km','categorie','intitule','montant','litres','plein_complet','garage_station','reference','detail'].join(';')];
+  D.fuels.forEach(f=>lines.push(['plein',f.date,f.km,'Carburant','',f.total,f.litres,f.full?'oui':'non',f.station,'',''].map(q).join(';')));
+  D.expenses.forEach(e=>lines.push(['depense',e.date,e.km,e.cat,e.label,e.amount,'','',e.garage,e.ref,e.note].map(q).join(';')));
+  download('voiture-'+today()+'.csv','\ufeff'+lines.join('\n'),'text/csv');
+}
+document.getElementById('importFile').addEventListener('change',ev=>{
+  const f=ev.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.fuels||!d.expenses||!d.schedules)throw 0;
+    if(confirm('Remplacer toutes les données actuelles par ce fichier ?')){D=d;save();render()}}
+    catch(e){alert("Ce fichier n'est pas un export de l'appli.")}ev.target.value=''};
+  r.readAsText(f);
+});
+
+render();
+</script>
+</body>
+</html>
