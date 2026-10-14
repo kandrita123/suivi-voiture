@@ -71,6 +71,17 @@ input,select,textarea{font:inherit;font-size:16px;width:100%;padding:9px 10px;bo
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .err{color:var(--red);font-size:14px;min-height:1em;margin-top:8px}
 svg text{fill:var(--ink2);font-size:11px}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th,.tbl td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl th{color:var(--ink2);font-weight:500}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--ink2);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.hb{padding:8px 12px;border-bottom:1px solid var(--line)}
+.hb:last-child{border-bottom:0}
+.hb div:first-child{display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px}
+.hb .track{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
+.hb .fill{height:100%;background:var(--petrol);border-radius:4px}
 .chart{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}
 </style>
 </head>
@@ -82,7 +93,9 @@ svg text{fill:var(--ink2);font-size:11px}
 
 <script>
 const KEY='suiviVehicule.v1';
-const CATS=['Révision','Entretien','Réparation','Pneus','Contrôle technique','Assurance','Péage','Parking','Lavage','Équipement','Amende','Autre'];
+const CATS=['Révision','Entretien','Réparation','Pneus','Contrôle technique','Assurance','Péage','Parking','Lavage','Équipement','Amende','Autre','Achat du véhicule'];
+const ACHAT='Achat du véhicule';
+const MAINT=['Révision','Entretien','Réparation','Pneus','Contrôle technique'];
 const DEFAULT_SCHED=[
  {name:'Révision',kmInt:'',monthInt:''},{name:'Vidange',kmInt:'',monthInt:''},
  {name:'Courroie de distribution',kmInt:'',monthInt:''},{name:'Contrôle technique',kmInt:'',monthInt:24},
@@ -146,14 +159,14 @@ function schedText(s,r){
 }
 
 let tab='home';
-const TABS=[['home','Accueil'],['fuel','Pleins'],['exp','Dépenses'],['sched','Échéances'],['set','Réglages']];
+const TABS=[['home','Accueil'],['fuel','Pleins'],['exp','Dépenses'],['sched','Échéances'],['bilan','Bilan'],['set','Réglages']];
 function renderNav(){document.getElementById('nav').innerHTML=TABS.map(([k,l])=>`<button class="${tab===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('')}
 function go(k){tab=k;render();window.scrollTo(0,0)}
 
 function render(){
   renderNav();
   const a=document.getElementById('app');
-  a.innerHTML=({home:vHome,fuel:vFuel,exp:vExp,sched:vSched,set:vSet})[tab]();
+  a.innerHTML=({home:vHome,fuel:vFuel,exp:vExp,sched:vSched,bilan:vBilan,set:vSet})[tab]();
 }
 
 function vHome(){
@@ -161,8 +174,8 @@ function vHome(){
   const avg=vals.length?vals.reduce((s,x)=>s+x,0)/vals.length:0;
   const y=String(new Date().getFullYear());
   const fuelY=D.fuels.filter(f=>(f.date||'').startsWith(y)).reduce((s,f)=>s+(num(f.total)||0),0);
-  const expY=D.expenses.filter(e=>(e.date||'').startsWith(y)).reduce((s,e)=>s+(num(e.amount)||0),0);
-  const totAll=D.fuels.reduce((s,f)=>s+(num(f.total)||0),0)+D.expenses.reduce((s,e)=>s+(num(e.amount)||0),0);
+  const expY=D.expenses.filter(e=>e.cat!==ACHAT&&(e.date||'').startsWith(y)).reduce((s,e)=>s+(num(e.amount)||0),0);
+  const totAll=D.fuels.reduce((s,f)=>s+(num(f.total)||0),0)+D.expenses.filter(e=>e.cat!==ACHAT).reduce((s,e)=>s+(num(e.amount)||0),0);
   const dist=cur-(num(D.vehicle.kmAchat)||0);
   const perKm=dist>0&&!isNaN(num(D.vehicle.kmAchat))?totAll/dist:NaN;
   const digits=String(Math.round(cur)).padStart(6,'0').split('').map(d=>`<span class="num">${d}</span>`).join('');
@@ -223,6 +236,88 @@ function chart(pts){
   </svg></div>`;
 }
 
+
+let bilanYear='';
+const COL={fuel:'var(--amber)',maint:'var(--petrol)',other:'var(--green)'};
+const yearOf=s=>(s||'').slice(0,4);
+function kmReadings(){
+  const r=[...D.fuels.map(f=>[f.date,num(f.km)]),...D.expenses.map(e=>[e.date,num(e.km)])];
+  if(D.vehicle.dateAchat)r.push([D.vehicle.dateAchat,num(D.vehicle.kmAchat)]);
+  const v=r.filter(x=>x[0]&&!isNaN(x[1])).map(x=>({t:Date.parse(x[0]+'T12:00'),k:x[1]})).sort((a,b)=>a.t-b.t);
+  let m=-Infinity;v.forEach(x=>{m=Math.max(m,x.k);x.k=m});return v;
+}
+function kmInterp(t,R){
+  if(!R.length||t<R[0].t)return NaN;
+  for(let i=0;i<R.length-1;i++)if(t>=R[i].t&&t<R[i+1].t)return R[i].k+(R[i+1].k-R[i].k)*(t-R[i].t)/(R[i+1].t-R[i].t);
+  return R[R.length-1].k;
+}
+function stacked(years){
+  const W=340,H=170,p=34,n=years.length,mx=Math.max(...years.map(y=>y.tot),1);
+  const step=(W-p-4)/n,bw=Math.max(6,step*0.68),Y=v=>(H-22)*(1-v/mx)+4;
+  let g='';
+  years.forEach((y,i)=>{let base=H-18;const x=p+i*step+(step-bw)/2;
+    [['fuel',y.fuel],['maint',y.maint],['other',y.other]].forEach(([k,v])=>{if(v>0){const h=(H-22)*v/mx;base-=h;g+=`<rect x="${x.toFixed(1)}" y="${base.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${COL[k]}"/>`}});
+    g+=`<text x="${(x+bw/2).toFixed(1)}" y="${H-4}" text-anchor="middle">${String(y.y).slice(2)}</text>`});
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Dépenses par année">
+  <line x1="${p}" x2="${W}" y1="${Y(mx)}" y2="${Y(mx)}" stroke="var(--line)"/><line x1="${p}" x2="${W}" y1="${H-18}" y2="${H-18}" stroke="var(--line)"/>
+  <text x="0" y="${Y(mx)+4}">${nf(mx)}€</text>${g}</svg>
+  <div class="legend"><span><i style="background:${COL.fuel}"></i>Carburant</span><span><i style="background:${COL.maint}"></i>Entretien</span><span><i style="background:${COL.other}"></i>Autres</span></div></div>`;
+}
+function simpleBars(items,unit){
+  const W=340,H=150,p=34,n=items.length,mx=Math.max(...items.map(x=>x.v||0),1);
+  const step=(W-p-4)/n,bw=Math.max(6,step*0.68);
+  let g='';items.forEach((it,i)=>{const x=p+i*step+(step-bw)/2,h=(H-22)*(it.v||0)/mx;
+    if(it.v)g+=`<rect x="${x.toFixed(1)}" y="${(H-18-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${it.est?'var(--ink2)':'var(--petrol)'}" ${it.est?'opacity=".45"':''}/>`;
+    g+=`<text x="${(x+bw/2).toFixed(1)}" y="${H-4}" text-anchor="middle">${it.l}</text>`});
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" width="100%" role="img">
+  <line x1="${p}" x2="${W}" y1="4" y2="4" stroke="var(--line)"/><line x1="${p}" x2="${W}" y1="${H-18}" y2="${H-18}" stroke="var(--line)"/>
+  <text x="0" y="8">${nf(mx)}${unit}</text>${g}</svg></div>`;
+}
+function vBilan(){
+  const exps=D.expenses.filter(e=>e.cat!==ACHAT);
+  const dates=[...exps.map(e=>e.date),...D.fuels.map(f=>f.date)].filter(Boolean);
+  if(!dates.length)return '<div class="empty">Pas encore de données.</div>';
+  const cy=new Date().getFullYear(),R=kmReadings();
+  let y0=Math.min(...dates.map(d=>+yearOf(d)));
+  if(D.vehicle.dateAchat)y0=Math.min(y0,+yearOf(D.vehicle.dateAchat));
+  const sum=(a,f)=>a.reduce((s,x)=>s+(num(f(x))||0),0);
+  const years=[];
+  for(let y=y0;y<=cy;y++){const Y=String(y);
+    const fuel=sum(D.fuels.filter(f=>yearOf(f.date)===Y),f=>f.total);
+    const ey=exps.filter(e=>yearOf(e.date)===Y);
+    const maint=sum(ey.filter(e=>MAINT.includes(e.cat)),e=>e.amount),other=sum(ey.filter(e=>!MAINT.includes(e.cat)),e=>e.amount);
+    const a=kmInterp(Date.parse((y-1)+'-12-31T23:59'),R),b=kmInterp(y===cy?Date.now():Date.parse(Y+'-12-31T23:59'),R);
+    years.push({y,fuel,maint,other,tot:fuel+maint+other,km:(!isNaN(a)&&!isNaN(b)&&b>a)?b-a:NaN});
+  }
+  const achat=sum(D.expenses.filter(e=>e.cat===ACHAT),e=>e.amount);
+  const totUse=years.reduce((s,y)=>s+y.tot,0),maintTot=years.reduce((s,y)=>s+y.maint,0);
+  const start=D.vehicle.dateAchat||D.expenses.filter(e=>e.cat===ACHAT).map(e=>e.date).sort()[0]||dates.sort()[0];
+  const nYears=Math.max(1,(Date.now()-Date.parse(start+'T12:00'))/(365.25*864e5));
+  const firstFuel=D.fuels.map(f=>f.date).sort()[0];
+  const per=bilanYear?exps.filter(e=>yearOf(e.date)===bilanYear):exps;
+  const byCat={};per.forEach(e=>byCat[e.cat]=(byCat[e.cat]||0)+(num(e.amount)||0));
+  const fp=bilanYear?D.fuels.filter(f=>yearOf(f.date)===bilanYear):D.fuels;
+  const fuelP=sum(fp,f=>f.total);if(fuelP)byCat['Carburant']=fuelP;
+  const cats=Object.entries(byCat).sort((a,b)=>b[1]-a[1]),cmx=cats.length?cats[0][1]:1,ctot=cats.reduce((s,c)=>s+c[1],0);
+  const fsorted=[...D.fuels].sort((a,b)=>a.date.localeCompare(b.date)).map(f=>({d:f.date,v:num(f.total)/num(f.litres)})).filter(x=>isFinite(x.v));
+  return `<div class="grid">
+    <div class="stat"><small>Dépensé depuis l'achat</small><b class="num">${eur(totUse)}</b></div>
+    <div class="stat"><small>Entretien moyen / an</small><b class="num">${eur(maintTot/nYears)}</b></div>
+    ${achat?`<div class="stat"><small>Prix d'achat</small><b class="num">${eur(achat)}</b></div>
+    <div class="stat"><small>Coût total de possession</small><b class="num">${eur(achat+totUse)}</b></div>`:''}
+  </div>
+  <h2>Dépenses par année</h2>${stacked(years)}
+  ${firstFuel?`<p class="muted">Carburant suivi depuis le ${fdate(firstFuel)} : les années précédentes n'en contiennent pas.</p>`:''}
+  <h2>Kilomètres par année</h2>${simpleBars(years.map(y=>({l:String(y.y).slice(2),v:isNaN(y.km)?0:Math.round(y.km),est:y.y===cy})),' km')}
+  <p class="muted">Estimés à partir des kilométrages saisis, répartis entre deux relevés. L'année en cours (en gris) est partielle.</p>
+  <h2>Tableau annuel</h2>
+  <div class="list" style="overflow-x:auto"><table class="tbl num"><tr><th>Année</th><th>Total</th><th>Km</th><th>€/km</th></tr>
+  ${[...years].reverse().map(y=>`<tr><td>${y.y}</td><td>${eur(y.tot)}</td><td>${isNaN(y.km)?'–':nf(y.km)}</td><td>${!isNaN(y.km)&&y.km>0&&y.tot?nf(y.tot/y.km,2):'–'}</td></tr>`).join('')}</table></div>
+  <h2>Par catégorie</h2>
+  <label for="by" class="sr">Période</label><select id="by" onchange="bilanYear=this.value;render()"><option value="">Depuis l'achat</option>${[...years].reverse().map(y=>`<option ${String(y.y)===bilanYear?'selected':''}>${y.y}</option>`).join('')}</select>
+  <div class="list" style="margin-top:10px">${cats.length?cats.map(([k,v])=>`<div class="hb"><div><span>${esc(k)}</span><span class="num">${eur(v)} · ${nf(v/ctot*100)} %</span></div><div class="track"><div class="fill" style="width:${(v/cmx*100).toFixed(1)}%;background:${k==='Carburant'?COL.fuel:MAINT.includes(k)?COL.maint:COL.other}"></div></div></div>`).join(''):'<div class="empty">Rien sur cette période.</div>'}</div>
+  ${fsorted.length>=2?`<h2>Prix du litre</h2>${simpleBars(fsorted.slice(-12).map(x=>({l:x.d.slice(5,7)+'/'+x.d.slice(2,4),v:Math.round(x.v*1000)/1000})),' €')}`:''}`;
+}
 let expFilter='';
 function vExp(){
   const list=[...D.expenses].filter(e=>!expFilter||e.cat===expFilter).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
